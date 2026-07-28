@@ -1,6 +1,6 @@
 # sparam-lint
 
-![CI](https://github.com/nickharris808/sparam-lint/actions/workflows/ci.yml/badge.svg) ![Python](https://img.shields.io/badge/python-3.10%20%E2%80%93%203.13-blue) ![Licence](https://img.shields.io/badge/licence-Apache--2.0-green) ![Tests](https://img.shields.io/badge/tests-32%20passing-brightgreen)
+![CI](https://github.com/nickharris808/sparam-lint/actions/workflows/ci.yml/badge.svg) ![Python](https://img.shields.io/badge/python-3.10%20%E2%80%93%203.13-blue) ![Licence](https://img.shields.io/badge/licence-Apache--2.0-green) ![Tests](https://img.shields.io/badge/tests-37%20passing-brightgreen)
 
 **Is your S-parameter model physically possible?**
 
@@ -112,6 +112,119 @@ it needs nothing on a package index. Swap the first line for
 Running `--self-test` *before* the models is the recommended order: a clean
 report from a checker you have not verified is worth nothing.
 
+## A worked example: triaging a folder of vendor models
+
+You have been handed a directory of `.s2p` files and no provenance. Start by
+proving the checker still works, then check everything at once, then look only
+at what failed.
+
+```bash
+$ sparam-lint --self-test
+negative control
+  [REJECTED] passivity
+  [REJECTED] reciprocity
+  [REJECTED] energy_conservation
+  [REJECTED] positive_real_z0
+  [REJECTED] group_delay_nonneg
+
+  battery discriminates: True
+```
+
+Five networks built to violate one law each, and each was rejected. Now the
+models — one command, one exit code:
+
+```bash
+$ sparam-lint --quiet examples/*.s2p
+── examples/active_gain.s2p
+sparam-lint 2-port  64 points  1-40 GHz  z0=50Ω
+
+  [FAIL] passivity              largest singular value 2.882175 > 1 at 25.1429 GHz -- this network produces more power than is put into it
+  [PASS] reciprocity            normalized asymmetry 0.000e+00 <= 1e-06
+  [FAIL] energy_conservation    worst row power 8.023758 > 1 at 18.9524 GHz -- driving one port yields more power out than in
+  [PASS] positive_real_z0       minimum Re(Z_in) 55.2632 ohm > 0
+  [PASS] group_delay_nonneg     minimum group delay 2.000000e-11 s >= 0
+
+  2 of 5 laws FAILED
+  This network is not physically realizable as a passive device.
+
+  2 file(s), 1 with violations
+```
+
+`--quiet` printed only the file with violations; the clean one is accounted for
+in the summary line. The exit code is `1`, so a CI step fails here without any
+parsing of the output.
+
+To act on it programmatically, take the JSON. Several files produce an envelope
+with a `summary`; one file produces the flat object on its own:
+
+```bash
+$ sparam-lint --json examples/*.s2p | python3 -c '
+import json,sys
+d = json.load(sys.stdin)
+for f in d["files"]:
+    bad = [law["name"] for law in f.get("laws", []) if not law["passed"]]
+    print(f["file"], "->", ", ".join(bad) or "clean")
+'
+examples/active_gain.s2p -> passivity, energy_conservation
+examples/passive_line.s2p -> clean
+```
+
+**Now the judgement call.** Suppose one of those failures is
+`reciprocity` on a ferrite isolator. That is a real, buyable component whose
+medium is non-reciprocal, so `S ≠ Sᵀ` is correct behaviour — the check is a true
+positive for the law and a false alarm for the device. The tool will not decide
+that for you, and it should not: the right move is to record that
+non-reciprocity is expected for that file, not to switch the law off for
+everything. Turning the law off to quiet one isolator also goes blind to the
+transposed-reshape bug it exists to catch.
+
+## CLI reference
+
+```
+sparam-lint [FILE ...] [--json] [--quiet] [--self-test] [--no-colour] [--version]
+```
+
+| Argument | Meaning |
+|---|---|
+| `FILE ...` | One or more Touchstone files. A shell glob works: `models/*.s2p`. |
+| `--json` | Machine-readable output. See the shapes below. |
+| `--quiet`, `-q` | With several files, print only those with violations. The summary line still counts every file. |
+| `--self-test` | Run the negative control and exit. Ignores `FILE`. |
+| `--no-colour` | Disable ANSI colour. Colour is off automatically when stdout is not a TTY. |
+| `--version` | Print the version. |
+
+**Exit codes** — the contract, and the reason this survives in CI:
+
+| Code | Meaning |
+|---|---|
+| `0` | every law passed on every file |
+| `1` | at least one law failed |
+| `2` | at least one file could not be parsed |
+| `3` | the negative control failed — the checker itself is not discriminating |
+
+`2` outranks `1` deliberately. "I could not check this" is a worse answer than
+"I checked it and it failed", so it wins the exit code.
+
+**JSON shapes.** One file emits the flat object, unchanged since the first
+release so existing parsers keep working:
+
+```json
+{"file": "...", "n_ports": 2, "n_freq": 64, "z0_ohm": 50.0,
+ "passed": true, "laws": [{"name": "passivity", "passed": true, ...}]}
+```
+
+Several files emit an envelope. The presence of `files` is how a consumer tells
+them apart:
+
+```json
+{"files": [ ...one flat object per file... ],
+ "summary": {"n_files": 2, "n_checked": 2, "n_unreadable": 0,
+             "n_with_violations": 1, "passed": false}}
+```
+
+A file that could not be parsed appears in `files` as
+`{"file": ..., "error": "...", "passed": false}` — it is never silently dropped.
+
 ## Library use
 
 ```python
@@ -121,6 +234,65 @@ net = read_touchstone("my_model.s2p")
 for law in run_battery(net.s, net.freq_hz, net.z0):
     print(law.name, law.passed, law.message)
 ```
+
+| Object | What it is |
+|---|---|
+| `read_touchstone(path) -> Network` | Parses `.sNp`. Raises `TouchstoneError` on anything malformed — it never returns a partly-read network. |
+| `Network` | `.freq_hz` (F,), `.s` (F, N, N) complex, `.z0`, `.n_ports`, `.n_freq`, `.path` |
+| `run_battery(s, freq_hz, z0) -> list[LawResult]` | The five laws over the whole band. |
+| `LawResult` | `.name`, `.passed`, `.message`, `.detail` (dict), `.as_dict()` |
+| `run_negative_control() -> dict` | Builds a violator per law and asserts each is rejected. `["battery_discriminates"]` is the verdict. |
+| `TouchstoneError` | Subclass of `ValueError`. |
+
+`as_dict()` carries the numbers behind the verdict — `worst_value` and
+`worst_freq_hz`, plus `law`, `passed` and `message` — so you can threshold on
+them yourself rather than parsing prose. Note the key is `law`, not `name`.
+
+`.detail` is for the exceptions rather than the numbers: today only the
+group-delay law populates it, with `{"skipped": True}` when the sweep has fewer
+than three frequency points and a derivative cannot be taken. A skipped law is
+reported as `SKIP`, never folded into the pass count.
+
+`run_negative_control()` returns both directions —
+`negative_control` (violators that must be rejected),
+`positive_control` (a clean network that must pass), and the two roll-ups
+`negative_control_all_rejected` / `positive_control_all_pass`. A law that stops
+rejecting violators has gone blind; one that starts rejecting good networks has
+gone hysterical, and only checking both catches the pair.
+
+## Troubleshooting
+
+**`cannot infer port count from filename 'model.txt'`** — Touchstone encodes the
+port count in the extension, not in the file. Rename to `.s2p`, `.s4p`, and so on.
+
+**`18 numbers is not a multiple of 33 … is this really a .s4p, or should it be
+.s2p?`** — the commonest real failure: the extension disagrees with the
+contents. The message names the port count the row width actually fits.
+
+**`2 non-finite value(s) (NaN/Inf). Refusing to parse`** — the file contains
+`NaN` or `Inf`, usually from a failed solve or a de-embedding step that divided
+by zero. The tool refuses rather than reporting a verdict computed on `NaN`.
+Fix the export; there is no flag to override this, on purpose.
+
+**`frequencies are not strictly increasing -- row 42 repeats`** — sort the rows
+by frequency and drop duplicates. Group delay is a derivative and cannot be
+computed across an unordered sweep.
+
+**`only S-parameter files supported, got Y`** — the option line declares
+Y-parameters. Re-export as S, or convert with `scikit-rf` first.
+
+**A lossless line fails passivity by a hair** — the battery allows σ_max up to
+`1 + 1e-9` (`PASSIVITY_TOL`), which is floating-point slack, not physics slack.
+A genuinely lossless line sits at σ_max = 1 and passes. If yours fails by more
+than that margin, the excess is in the model, not in the arithmetic.
+
+**Reciprocity fails on a device you know is real** — non-reciprocal media
+(ferrites, isolators, circulators) violate reciprocity by design. See the worked
+example above: record the expectation for that file rather than disabling the law.
+
+**Exit code 2 in CI and no obvious error** — a glob matched nothing, or matched
+a file that is not Touchstone. Print the glob before running it; `2` means "not
+checked", never "fine".
 
 ## Two things this parser gets right
 

@@ -61,10 +61,13 @@ def main(argv: list[str] | None = None) -> int:
         prog="sparam-lint",
         description="Check whether an S-parameter model is physically possible.",
     )
-    p.add_argument("path", nargs="?", help="Touchstone .sNp file")
+    p.add_argument("paths", nargs="*", metavar="FILE",
+                   help="Touchstone .sNp file(s); a shell glob works")
     p.add_argument("--json", action="store_true", help="machine-readable output")
     p.add_argument("--self-test", action="store_true",
                    help="run the negative control and exit (proves the checker discriminates)")
+    p.add_argument("--quiet", "-q", action="store_true",
+                   help="with several files, print only the ones with violations")
     p.add_argument("--no-colour", action="store_true", help="disable ANSI colour")
     p.add_argument("--version", action="version", version=f"sparam-lint {__version__}")
     args = p.parse_args(argv)
@@ -84,34 +87,72 @@ def main(argv: list[str] | None = None) -> int:
             print(_c(f"  battery discriminates: {ok}", GREEN if ok else RED, use))
         return 0 if report["battery_discriminates"] else 3
 
-    if not args.path:
+    if not args.paths:
         p.error("a Touchstone file is required (or use --self-test)")
 
-    try:
-        net = read_touchstone(Path(args.path))
-    except TouchstoneError as exc:
-        if args.json:
-            print(json.dumps({"error": str(exc), "passed": False}, indent=2))
-        else:
-            print(f"error: {exc}", file=sys.stderr)
-        return 2
+    use_colour = not args.no_colour and sys.stdout.isatty()
+    reports, worst = [], 0
 
-    results = run_battery(net.s, net.freq_hz, net.z0)
-    failed = any(not r.passed for r in results)
+    for path in args.paths:
+        try:
+            net = read_touchstone(Path(path))
+        except TouchstoneError as exc:
+            # Exit 2 outranks exit 1: "I could not check this" is a worse
+            # answer than "I checked it and it failed", so it wins the code.
+            worst = 2
+            reports.append({"file": str(path), "error": str(exc), "passed": False})
+            if not args.json:
+                print(f"error: {exc}", file=sys.stderr)
+            continue
 
-    if args.json:
-        print(json.dumps({
+        results = run_battery(net.s, net.freq_hz, net.z0)
+        failed = any(not r.passed for r in results)
+        if failed and worst < 1:
+            worst = 1
+        reports.append({
             "file": net.path,
             "n_ports": net.n_ports,
             "n_freq": net.n_freq,
             "z0_ohm": net.z0,
             "passed": not failed,
             "laws": [r.as_dict() for r in results],
-        }, indent=2))
-    else:
-        print(_human(results, net, not args.no_colour and sys.stdout.isatty()))
+        })
+        if not args.json and not (args.quiet and not failed):
+            if len(args.paths) > 1:
+                print(_c(f"── {net.path}", BOLD, use_colour))
+            print(_human(results, net, use_colour))
+            if len(args.paths) > 1:
+                print()
 
-    return 1 if failed else 0
+    if args.json:
+        # One file keeps the flat object it has always emitted, so existing
+        # parsers do not break; several files get an envelope. The presence of
+        # "files" is how a consumer tells them apart.
+        if len(args.paths) == 1:
+            print(json.dumps(reports[0], indent=2))
+        else:
+            checked = [r for r in reports if "error" not in r]
+            print(json.dumps({
+                "files": reports,
+                "summary": {
+                    "n_files": len(reports),
+                    "n_checked": len(checked),
+                    "n_unreadable": len(reports) - len(checked),
+                    "n_with_violations": sum(1 for r in checked if not r["passed"]),
+                    "passed": worst == 0,
+                },
+            }, indent=2))
+    elif len(args.paths) > 1:
+        checked = [r for r in reports if "error" not in r]
+        bad = sum(1 for r in checked if not r["passed"])
+        unread = len(reports) - len(checked)
+        parts = [f"{len(reports)} file(s)", f"{bad} with violations"]
+        if unread:
+            parts.append(f"{unread} unreadable")
+        line = "  " + ", ".join(parts)
+        print(_c(line, (RED + BOLD) if worst else (GREEN + BOLD), use_colour))
+
+    return worst
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -111,13 +111,17 @@ def read_touchstone(path: str | Path) -> Network:
     """
     path = Path(path)
     if not path.exists():
-        raise TouchstoneError(f"no such file: {path}")
+        near = sorted(p.name for p in path.parent.glob(path.stem + ".*")) \
+            if path.parent.exists() else []
+        hint = f" -- did you mean {near[0]}?" if near else ""
+        raise TouchstoneError(f"no such file: {path}{hint}")
 
     m = re.search(r"\.s(\d+)p$", path.name, re.IGNORECASE)
     n_ports = int(m.group(1)) if m else 0
 
     freq_mult, param, fmt, z0 = 1e9, "s", "ma", 50.0
     saw_option = False
+    first_row_width: int | None = None
     numbers: list[float] = []
 
     with path.open("r", encoding="utf-8", errors="replace") as fh:
@@ -133,25 +137,53 @@ def read_touchstone(path: str | Path) -> Network:
                 continue
             if line[0].isalpha():
                 continue  # v2 keyword block
-            for tok in line.replace(",", " ").split():
+            toks = line.replace(",", " ").split()
+            if first_row_width is None:
+                first_row_width = len(toks)
+            for tok in toks:
                 try:
                     numbers.append(float(tok))
                 except ValueError as exc:
                     raise TouchstoneError(f"non-numeric token {tok!r} in {path.name}") from exc
 
     if not numbers:
-        raise TouchstoneError(f"{path.name}: no data rows")
+        raise TouchstoneError(
+            f"{path.name}: no data rows -- the file has an option line or comments "
+            "but no numbers. Check it is not truncated or an empty export."
+        )
     if param != "s":
-        raise TouchstoneError(f"{path.name}: only S-parameter files supported, got {param.upper()}")
+        raise TouchstoneError(
+            f"{path.name}: only S-parameter files supported, got {param.upper()}. "
+            f"The option line declares '{param.upper()}'; re-export as S-parameters, "
+            "or convert with scikit-rf before checking."
+        )
 
     if n_ports == 0:
-        raise TouchstoneError(f"cannot infer port count from filename {path.name!r}")
+        raise TouchstoneError(
+            f"cannot infer port count from filename {path.name!r} -- Touchstone "
+            "encodes it in the extension. Rename to .s2p for a 2-port, .s4p for "
+            "a 4-port, and so on."
+        )
 
     stride = 1 + 2 * n_ports * n_ports
     if len(numbers) % stride:
+        # Almost always a file whose extension disagrees with its contents --
+        # a 4-port export saved as .s2p. Say which extension would fit, since
+        # that is the fix rather than a fact about arithmetic.
+        # The width of the first data line is the strongest evidence: one row
+        # is 1 frequency + 2 numbers per S entry, so it pins the port count
+        # outright. Fall back to divisibility only when rows are wrapped.
+        fits = [n for n in range(1, 33)
+                if 1 + 2 * n * n == first_row_width and n != n_ports] or \
+               [n for n in range(1, 33)
+                if len(numbers) % (1 + 2 * n * n) == 0 and n != n_ports]
+        hint = (f" The rows are the right width for a {fits[0]}-port file -- is "
+                f"this really a .s{n_ports}p, or should it be .s{fits[0]}p?"
+                ) if fits else ""
         raise TouchstoneError(
             f"{path.name}: {len(numbers)} numbers is not a multiple of "
-            f"{stride} (1 freq + {n_ports*n_ports} complex entries)"
+            f"{stride} (1 freq + {n_ports*n_ports} complex entries)."
+            + hint
         )
 
     rows = np.asarray(numbers, dtype=float).reshape(-1, stride)
@@ -164,7 +196,14 @@ def read_touchstone(path: str | Path) -> Network:
 
     freq = rows[:, 0] * freq_mult
     if np.any(np.diff(freq) <= 0):
-        raise TouchstoneError(f"{path.name}: frequencies are not strictly increasing")
+        i = int(np.argmax(np.diff(freq) <= 0))
+        what = "repeats" if freq[i + 1] == freq[i] else "goes backwards"
+        raise TouchstoneError(
+            f"{path.name}: frequencies are not strictly increasing -- row {i + 2} "
+            f"{what} ({freq[i]/1e9:g} GHz then {freq[i+1]/1e9:g} GHz). Sort the "
+            "rows by frequency and remove duplicates; group delay is a derivative "
+            "and cannot be computed across an unordered sweep."
+        )
 
     pairs = rows[:, 1:].reshape(len(rows), n_ports * n_ports, 2)
     s = np.empty((len(rows), n_ports, n_ports), dtype=complex)

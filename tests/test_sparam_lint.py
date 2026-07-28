@@ -7,8 +7,11 @@ cannot distinguish a working checker from one that always says PASS.
 
 from __future__ import annotations
 
+import io
 import json
 import os
+import pathlib
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -315,4 +318,79 @@ def test_pypi_install_lines_are_labelled_as_not_yet_available():
         assert "Not yet on PyPI" in readme, (
             "README shows `pip install sparam-lint` without saying the name "
             "is not published yet"
+        )
+
+
+# ------------------------------------------ the documentation must stay true
+
+def test_readme_cli_reference_lists_every_real_flag_and_no_invented_one():
+    """A reference that drifts from argparse is worse than no reference."""
+    readme = (_REPO / "README.md").read_text(encoding="utf-8")
+    table = readme.split("## CLI reference", 1)[1].split("## Library use", 1)[0]
+
+    import sparam_lint.cli as cli
+    src = pathlib.Path(cli.__file__).read_text(encoding="utf-8")
+    flags = set(re.findall(r'p\.add_argument\("(--[a-z-]+)"', src))
+    assert flags, "no flags found -- this guard has stopped looking"
+    for flag in flags:
+        assert flag in table, f"{flag} exists but the CLI reference omits it"
+    for documented in set(re.findall(r"`(--[a-z-]+)`", table)):
+        assert documented in flags, f"CLI reference documents {documented}, which does not exist"
+
+
+def test_readme_documents_the_real_exit_codes():
+    readme = (_REPO / "README.md").read_text(encoding="utf-8")
+    table = readme.split("**Exit codes**", 1)[1].split("`2` outranks", 1)[0]
+    for code in ("`0`", "`1`", "`2`", "`3`"):
+        assert code in table, f"exit code {code} is undocumented"
+
+
+def test_readme_api_table_names_only_real_attributes():
+    """Every attribute the Library-use table promises must exist."""
+    from sparam_lint import read_touchstone, run_battery, run_negative_control
+    net = read_touchstone(EXAMPLES / "passive_line.s2p")
+    for attr in ("freq_hz", "s", "z0", "n_ports", "n_freq", "path"):
+        assert hasattr(net, attr), f"README promises Network.{attr}"
+    law = run_battery(net.s, net.freq_hz, net.z0)[0]
+    for attr in ("name", "passed", "message", "detail", "as_dict"):
+        assert hasattr(law, attr), f"README promises LawResult.{attr}"
+    # The README says the dict key is `law`, not `name`. It said `name` once.
+    assert "law" in law.as_dict() and "name" not in law.as_dict()
+    for key in ("worst_value", "worst_freq_hz"):
+        assert key in law.as_dict(), f"README promises as_dict()[{key!r}]"
+    nc = run_negative_control()
+    for key in ("battery_discriminates", "negative_control", "positive_control",
+                "negative_control_all_rejected", "positive_control_all_pass"):
+        assert key in nc, f"README promises run_negative_control()[{key!r}]"
+
+
+def test_readme_passivity_tolerance_matches_the_code():
+    from sparam_lint.laws import PASSIVITY_TOL
+    readme = (_REPO / "README.md").read_text(encoding="utf-8")
+    # 1e-09 and 1e-9 are the same number written two ways; accept either
+    # spelling, reject a different number.
+    spellings = {f"1 + {PASSIVITY_TOL:g}", f"1 + {PASSIVITY_TOL:.0e}".replace("e-09", "e-9")}
+    assert any(sp in readme for sp in spellings), (
+        f"README quotes a passivity tolerance that is not {PASSIVITY_TOL:g}"
+    )
+
+
+def test_worked_example_transcript_is_real_output():
+    """The tutorial pastes two transcripts. Both must be what the code prints."""
+    readme = (_REPO / "README.md").read_text(encoding="utf-8")
+
+    for cmd, argv in [
+        ("$ sparam-lint --self-test\n", ["--self-test"]),
+        ("$ sparam-lint --quiet examples/*.s2p\n", ["--quiet"] + sorted(
+            str(p.relative_to(_REPO)) for p in (_REPO / "examples").glob("*.s2p"))),
+    ]:
+        documented = readme.split(cmd, 1)[1].split("```", 1)[0].strip()
+        buf = io.StringIO()
+        old, sys.stdout = sys.stdout, buf
+        try:
+            cli_main(argv)
+        finally:
+            sys.stdout = old
+        assert buf.getvalue().strip() == documented, (
+            f"transcript for `{cmd.strip()}` no longer matches the code"
         )
