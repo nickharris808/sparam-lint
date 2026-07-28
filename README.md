@@ -1,6 +1,6 @@
 # sparam-lint
 
-![CI](https://github.com/nickharris808/sparam-lint/actions/workflows/ci.yml/badge.svg) ![Python](https://img.shields.io/badge/python-3.10%20%E2%80%93%203.13-blue) ![Licence](https://img.shields.io/badge/licence-Apache--2.0-green) ![Tests](https://img.shields.io/badge/tests-54%20passing-brightgreen)
+![CI](https://github.com/nickharris808/sparam-lint/actions/workflows/ci.yml/badge.svg) ![Python](https://img.shields.io/badge/python-3.10%20%E2%80%93%203.13-blue) ![Licence](https://img.shields.io/badge/licence-Apache--2.0-green) ![Tests](https://img.shields.io/badge/tests-61%20passing-brightgreen)
 
 📖 **[Documentation site](https://nickharris808.github.io/physics-lint/)** — the portfolio narrative, the concepts, a full walkthrough, and what all of this proves (and does not).
 
@@ -183,7 +183,7 @@ $ sparam-lint --json examples/*.s2p | python3 -c '
 import json,sys
 d = json.load(sys.stdin)
 for f in d["files"]:
-    bad = [law["name"] for law in f.get("laws", []) if not law["passed"]]
+    bad = [law["law"] for law in f.get("laws", []) if not law["passed"]]
     print(f["file"], "->", ", ".join(bad) or "clean")
 '
 examples/active_gain.s2p -> passivity, energy_conservation
