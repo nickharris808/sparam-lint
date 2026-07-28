@@ -15,6 +15,7 @@ from __future__ import annotations
 import cmath
 import math
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -23,6 +24,28 @@ import numpy as np
 __all__ = ["Network", "read_touchstone", "TouchstoneError"]
 
 _FREQ_MULT = {"hz": 1.0, "khz": 1e3, "mhz": 1e6, "ghz": 1e9, "thz": 1e12}
+
+
+
+def _glyphs() -> tuple[str, str]:
+    """The ohm sign and the rule, degraded when stdout cannot encode them.
+
+    A Windows console defaults to cp1252, which has no U+03A9. Printing it
+    there raised ``UnicodeEncodeError`` *after* the physics had already run, so
+    the process died with exit 1 and no output -- indistinguishable, to a caller
+    reading only the exit code, from "a law failed". A crash that looks like a
+    verdict is precisely the failure this checker exists to prevent, so the
+    glyphs degrade to ASCII rather than the run dying.
+    """
+    enc = getattr(sys.stdout, "encoding", None) or "ascii"
+    try:
+        "\u03a9\u2500\u2500".encode(enc)
+    except (UnicodeEncodeError, LookupError):
+        return " ohm", "--"
+    return "\u03a9", "\u2500\u2500"
+
+
+OHM, RULE = _glyphs()
 
 
 class TouchstoneError(ValueError):
@@ -57,7 +80,7 @@ class Network:
     def __repr__(self) -> str:  # pragma: no cover - cosmetic
         return (
             f"Network({self.n_ports}-port, {self.n_freq} freq, "
-            f"{self.freq_hz[0]/1e9:.4g}-{self.freq_hz[-1]/1e9:.4g} GHz, z0={self.z0}Ω)"
+            f"{self.freq_hz[0]/1e9:.4g}-{self.freq_hz[-1]/1e9:.4g} GHz, z0={self.z0}{OHM})"
         )
 
 

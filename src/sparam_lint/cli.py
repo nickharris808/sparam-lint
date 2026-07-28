@@ -18,7 +18,7 @@ from pathlib import Path
 from . import __version__
 from .control import run_negative_control
 from .laws import run_battery
-from .touchstone import TouchstoneError, read_touchstone
+from .touchstone import OHM, RULE, TouchstoneError, read_touchstone
 
 GREEN, RED, YELLOW, DIM, BOLD, RESET = (
     "\033[32m", "\033[31m", "\033[33m", "\033[2m", "\033[1m", "\033[0m",
@@ -29,11 +29,13 @@ def _c(text: str, colour: str, use: bool) -> str:
     return f"{colour}{text}{RESET}" if use else text
 
 
+
+
 def _human(results, net, use_colour: bool) -> str:
     lines = [
         f"{_c('sparam-lint', BOLD, use_colour)} {net.n_ports}-port  "
         f"{net.n_freq} points  "
-        f"{net.freq_hz[0]/1e9:.4g}-{net.freq_hz[-1]/1e9:.4g} GHz  z0={net.z0:g}Ω",
+        f"{net.freq_hz[0]/1e9:.4g}-{net.freq_hz[-1]/1e9:.4g} GHz  z0={net.z0:g}{OHM}",
         "",
     ]
     for r in results:
@@ -143,7 +145,7 @@ def main(argv: list[str] | None = None) -> int:
         })
         if not args.json and not (args.quiet and not failed):
             if len(args.paths) > 1:
-                print(_c(f"── {as_given}", BOLD, use_colour))
+                print(_c(f"{RULE} {as_given}", BOLD, use_colour))
             print(_human(results, net, use_colour))
             if len(args.paths) > 1:
                 print()

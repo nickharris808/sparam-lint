@@ -39,8 +39,13 @@ def _cli(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, "-m", "sparam_lint.cli", *args],
         cwd=HERE, capture_output=True, text=True,
+        # PYTHONIOENCODING is pinned because the card shows the UTF-8 output.
+        # On a narrow console the tool degrades the ohm sign to " ohm" on
+        # purpose -- that path is covered by tests/test_console_encoding.py,
+        # and comparing it against a card written in UTF-8 would be comparing
+        # two different, both-correct renderings.
         env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(HERE / "src"),
-             "HOME": str(HERE), "COLUMNS": "200"},
+             "HOME": str(HERE), "COLUMNS": "200", "PYTHONIOENCODING": "utf-8"},
     )
 
 
