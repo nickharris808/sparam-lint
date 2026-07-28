@@ -34,7 +34,25 @@ jobs:
       - name: Verify no private-tree imports
         shell: bash
         run: |
-          ! grep -rnE 'import genesis|from genesis|provisionals' --include='*.py' src/             || (echo "::error::package imports from a private source tree" && exit 1)
+          python - <<'GUARD'
+          import pathlib, re, sys
+          FORBIDDEN = re.compile(r"import\s+genesis|from\s+genesis|provisionals")
+          files = sorted(pathlib.Path("src").rglob("*.py"))
+          if not files:
+              sys.exit("::error::guard found no source files -- it would pass on anything")
+          # Negative control: the guard must reject a planted needle, or a
+          # clean result means nothing. `grep ... || true` would pass here.
+          if not FORBIDDEN.search("from genesis.solver import x"):
+              sys.exit("::error::guard no longer detects a known-bad import")
+          bad = [f"{p}:{i}: {ln.strip()}"
+                 for p in files
+                 for i, ln in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+                 if FORBIDDEN.search(ln)]
+          if bad:
+              print("\n".join(bad))
+              sys.exit("::error::package imports from a private source tree")
+          print(f"checked {len(files)} file(s): no private-tree imports")
+          GUARD
 
   lint:
     runs-on: ubuntu-latest
