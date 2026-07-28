@@ -398,3 +398,20 @@ def test_worked_example_transcript_is_real_output():
         assert buf.getvalue().strip() == documented, (
             f"transcript for `{cmd.strip()}` no longer matches the code"
         )
+
+
+def test_report_echoes_the_path_as_given_not_reserialized():
+    """A report should quote the argument, not a re-rendered version of it.
+
+    Path() round-trips through the OS separator, so on Windows a user who typed
+    `examples/x.s2p` was shown `examples\\x.s2p` -- and the JSON `file` field
+    was likewise not the string they passed.
+    """
+    given = "./examples/passive_line.s2p"
+    buf = io.StringIO()
+    old, sys.stdout = sys.stdout, buf
+    try:
+        cli_main([given, "--json"])
+    finally:
+        sys.stdout = old
+    assert json.loads(buf.getvalue())["file"] == given

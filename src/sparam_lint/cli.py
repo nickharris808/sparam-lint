@@ -109,8 +109,12 @@ def main(argv: list[str] | None = None) -> int:
         failed = any(not r.passed for r in results)
         if failed and worst < 1:
             worst = 1
+        # Quote the argument as given. Path() round-trips through the OS
+        # separator, so `examples/x.s2p` would come back as `examples\x.s2p`
+        # on Windows -- a report should echo what the user typed.
+        as_given = str(path)
         reports.append({
-            "file": net.path,
+            "file": as_given,
             "n_ports": net.n_ports,
             "n_freq": net.n_freq,
             "z0_ohm": net.z0,
@@ -119,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
         })
         if not args.json and not (args.quiet and not failed):
             if len(args.paths) > 1:
-                print(_c(f"── {net.path}", BOLD, use_colour))
+                print(_c(f"── {as_given}", BOLD, use_colour))
             print(_human(results, net, use_colour))
             if len(args.paths) > 1:
                 print()
