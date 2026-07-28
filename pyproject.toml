@@ -37,3 +37,12 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+# Declared explicitly so lint is deterministic across ruff versions; see the
+# note in CI. E4/E7/E9 + F is ruff's long-standing default, I adds isort.
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

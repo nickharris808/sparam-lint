@@ -18,12 +18,19 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from sparam_lint import (  # noqa: E402
-    TouchstoneError, check_energy_conservation, check_group_delay_nonneg,
-    check_passivity, check_positive_real_z0, check_reciprocity,
-    make_passive_line, read_touchstone, run_battery, run_negative_control,
+    TouchstoneError,
+    check_energy_conservation,
+    check_group_delay_nonneg,
+    check_passivity,
+    check_positive_real_z0,
+    check_reciprocity,
+    make_passive_line,
+    read_touchstone,
+    run_battery,
+    run_negative_control,
 )
-from sparam_lint.control import VIOLATORS  # noqa: E402
 from sparam_lint.cli import main as cli_main  # noqa: E402
+from sparam_lint.control import VIOLATORS  # noqa: E402
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 
