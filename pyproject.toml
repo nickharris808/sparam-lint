@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sparam-lint"
+version = "0.1.0"
+description = "Is your S-parameter model physically possible? Five laws, plus a negative control that proves the checker still discriminates."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "ChipletOS / Genesis contributors" }]
+keywords = [
+    "rf", "microwave", "signal-integrity", "touchstone", "s-parameters",
+    "passivity", "reciprocity", "causality", "eda", "linting",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = ["numpy>=1.23"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+sparam-lint = "sparam_lint.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/nickharris808/sparam-lint"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
