@@ -381,8 +381,12 @@ def test_worked_example_transcript_is_real_output():
 
     for cmd, argv in [
         ("$ sparam-lint --self-test\n", ["--self-test"]),
+        # Pass POSIX-style paths: the README documents a shell glob, and the
+        # tool echoes back whatever it was given. On Windows relative_to()
+        # would yield backslashes and the comparison would fail on a separator
+        # rather than on anything about the physics.
         ("$ sparam-lint --quiet examples/*.s2p\n", ["--quiet"] + sorted(
-            str(p.relative_to(_REPO)) for p in (_REPO / "examples").glob("*.s2p"))),
+            p.relative_to(_REPO).as_posix() for p in (_REPO / "examples").glob("*.s2p"))),
     ]:
         documented = readme.split(cmd, 1)[1].split("```", 1)[0].strip()
         buf = io.StringIO()
