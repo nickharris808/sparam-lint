@@ -18,6 +18,7 @@ The guard runs the CLI as a subprocess, exactly as a reader would.
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
@@ -39,13 +40,18 @@ def _cli(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, "-m", "sparam_lint.cli", *args],
         cwd=HERE, capture_output=True, text=True, encoding="utf-8",
+        # Inherit the environment rather than hand-building one: a minimal env
+        # with a POSIX PATH and no SYSTEMROOT stops CPython starting at all on
+        # Windows, so the child produced nothing and every comparison failed
+        # against an empty string.
+        #
         # PYTHONIOENCODING is pinned because the card shows the UTF-8 output.
         # On a narrow console the tool degrades the ohm sign to " ohm" on
         # purpose -- that path is covered by tests/test_console_encoding.py,
         # and comparing it against a card written in UTF-8 would be comparing
         # two different, both-correct renderings.
-        env={"PATH": "/usr/bin:/bin", "PYTHONPATH": str(HERE / "src"),
-             "HOME": str(HERE), "COLUMNS": "200", "PYTHONIOENCODING": "utf-8"},
+        env=dict(os.environ, PYTHONPATH=str(HERE / "src"),
+                 COLUMNS="200", PYTHONIOENCODING="utf-8"),
     )
 
 
