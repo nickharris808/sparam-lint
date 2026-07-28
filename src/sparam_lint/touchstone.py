@@ -86,12 +86,33 @@ def _parse_option_line(line: str) -> tuple[float, str, str, float]:
 
 
 def _to_complex(a: float, b: float, fmt: str) -> complex:
+    """Scalar conversion. Kept as the reference the array form is tested against."""
     if fmt == "ri":
         return complex(a, b)
     if fmt == "ma":
         return cmath.rect(a, math.radians(b))
     if fmt == "db":
         return cmath.rect(10.0 ** (a / 20.0), math.radians(b))
+    raise TouchstoneError(f"unknown format {fmt!r}")  # pragma: no cover
+
+
+def _to_complex_array(a: np.ndarray, b: np.ndarray, fmt: str) -> np.ndarray:
+    """Vectorized :func:`_to_complex` over whole arrays.
+
+    A 16-port sweep has one entry per port pair per frequency -- 256,256 of
+    them for 1001 points -- and calling the scalar form once each dominated
+    parsing. These are the same three formulae applied elementwise.
+
+    Not bit-identical to the scalar form for MA/DB, because ``exp(1j*theta)``
+    and ``cmath.rect`` order their floating-point operations differently; they
+    agree to ~1e-16 relative, which ``test_vectorized_conversion_matches_the_
+    scalar_form`` pins.
+    """
+    if fmt == "ri":
+        return a + 1j * b
+    if fmt in ("ma", "db"):
+        mag = a if fmt == "ma" else 10.0 ** (a / 20.0)
+        return mag * np.exp(1j * np.radians(b))
     raise TouchstoneError(f"unknown format {fmt!r}")  # pragma: no cover
 
 
@@ -122,7 +143,7 @@ def read_touchstone(path: str | Path) -> Network:
     freq_mult, param, fmt, z0 = 1e9, "s", "ma", 50.0
     saw_option = False
     first_row_width: int | None = None
-    numbers: list[float] = []
+    tokens: list[str] = []
 
     with path.open("r", encoding="utf-8", errors="replace") as fh:
         for raw in fh:
@@ -140,13 +161,26 @@ def read_touchstone(path: str | Path) -> Network:
             toks = line.replace(",", " ").split()
             if first_row_width is None:
                 first_row_width = len(toks)
-            for tok in toks:
-                try:
-                    numbers.append(float(tok))
-                except ValueError as exc:
-                    raise TouchstoneError(f"non-numeric token {tok!r} in {path.name}") from exc
+            tokens.extend(toks)
 
-    if not numbers:
+    # Convert the whole sweep in one call rather than once per token: a
+    # 32-port x 2001-point file is 4.1M tokens, and `float()` per token was
+    # 98% of parse time once the complex conversion was vectorized. numpy does
+    # the same conversion in C. The slow, precise error path only runs when the
+    # fast one has already told us something is wrong.
+    try:
+        numbers = np.asarray(tokens, dtype=float)
+    except ValueError as exc:
+        for tok in tokens:
+            try:
+                float(tok)
+            except ValueError:
+                raise TouchstoneError(
+                    f"non-numeric token {tok!r} in {path.name}"
+                ) from exc
+        raise TouchstoneError(f"{path.name}: could not read the data ({exc})") from exc
+
+    if numbers.size == 0:
         raise TouchstoneError(
             f"{path.name}: no data rows -- the file has an option line or comments "
             "but no numbers. Check it is not truncated or an empty export."
@@ -166,7 +200,7 @@ def read_touchstone(path: str | Path) -> Network:
         )
 
     stride = 1 + 2 * n_ports * n_ports
-    if len(numbers) % stride:
+    if numbers.size % stride:
         # Almost always a file whose extension disagrees with its contents --
         # a 4-port export saved as .s2p. Say which extension would fit, since
         # that is the fix rather than a fact about arithmetic.
@@ -176,17 +210,17 @@ def read_touchstone(path: str | Path) -> Network:
         fits = [n for n in range(1, 33)
                 if 1 + 2 * n * n == first_row_width and n != n_ports] or \
                [n for n in range(1, 33)
-                if len(numbers) % (1 + 2 * n * n) == 0 and n != n_ports]
+                if numbers.size % (1 + 2 * n * n) == 0 and n != n_ports]
         hint = (f" The rows are the right width for a {fits[0]}-port file -- is "
                 f"this really a .s{n_ports}p, or should it be .s{fits[0]}p?"
                 ) if fits else ""
         raise TouchstoneError(
-            f"{path.name}: {len(numbers)} numbers is not a multiple of "
+            f"{path.name}: {numbers.size} numbers is not a multiple of "
             f"{stride} (1 freq + {n_ports*n_ports} complex entries)."
             + hint
         )
 
-    rows = np.asarray(numbers, dtype=float).reshape(-1, stride)
+    rows = numbers.reshape(-1, stride)
     if not np.all(np.isfinite(rows)):
         bad = int(np.count_nonzero(~np.isfinite(rows)))
         raise TouchstoneError(
@@ -206,14 +240,15 @@ def read_touchstone(path: str | Path) -> Network:
         )
 
     pairs = rows[:, 1:].reshape(len(rows), n_ports * n_ports, 2)
-    s = np.empty((len(rows), n_ports, n_ports), dtype=complex)
-    for fi in range(len(rows)):
-        flat = np.array(
-            [_to_complex(a, b, fmt) for a, b in pairs[fi]], dtype=complex
-        )
-        if n_ports == 2:
-            s[fi] = _reorder_2port(flat)
-        else:
-            s[fi] = flat.reshape(n_ports, n_ports)
+    flat = _to_complex_array(pairs[:, :, 0], pairs[:, :, 1], fmt)
 
-    return Network(freq_hz=freq, s=s, z0=z0, path=str(path))
+    if n_ports == 2:
+        # Touchstone 2-port order is S11 S21 S12 S22, i.e. column-major, while
+        # 3-port and above are row-major. Reshaping to (F, 2, 2) and
+        # transposing the last two axes is the same permutation the per-row
+        # _reorder_2port did, applied to the whole sweep at once.
+        s = flat.reshape(len(rows), 2, 2).transpose(0, 2, 1)
+    else:
+        s = flat.reshape(len(rows), n_ports, n_ports)
+
+    return Network(freq_hz=freq, s=np.ascontiguousarray(s), z0=z0, path=str(path))

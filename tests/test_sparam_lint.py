@@ -415,3 +415,70 @@ def test_report_echoes_the_path_as_given_not_reserialized():
     finally:
         sys.stdout = old
     assert json.loads(buf.getvalue())["file"] == given
+
+
+# --------------------------------------------- vectorized format conversion
+
+@pytest.mark.parametrize("fmt", ["ri", "ma", "db"])
+def test_vectorized_conversion_matches_the_scalar_form(fmt):
+    """The array path must agree with the scalar one it replaced.
+
+    MA and DB are not bit-identical -- ``exp(1j*theta)`` and ``cmath.rect``
+    order their floating-point work differently -- so this pins the agreement
+    at the level it actually holds rather than asserting an equality that is
+    not true.
+    """
+    from sparam_lint.touchstone import _to_complex, _to_complex_array
+    rng = np.random.default_rng(0)
+    a = rng.uniform(-3.0, 3.0, 500)
+    b = rng.uniform(-360.0, 360.0, 500)
+    fast = _to_complex_array(a, b, fmt)
+    slow = np.array([_to_complex(x, y, fmt) for x, y in zip(a, b)])
+    assert np.allclose(fast, slow, rtol=1e-15, atol=1e-300)
+
+
+def test_two_port_column_major_order_survives_the_vectorized_reshape():
+    """S11 S21 S12 S22 on disk must land as [[S11, S12], [S21, S22]].
+
+    This is the one bug in the whole parser that produces plausible output --
+    it silently transposes every 2-port file, which turns the reciprocity check
+    into a no-op. It is pinned with four distinguishable values.
+    """
+    p = _REPO / "tests" / "_order_probe.s2p"
+    p.write_text("# HZ S RI R 50\n1e9 11 0 21 0 12 0 22 0\n", encoding="utf-8")
+    try:
+        net = read_touchstone(p)
+        assert net.s[0, 0, 0].real == 11.0, "S11 moved"
+        assert net.s[0, 1, 0].real == 21.0, "S21 must be row 1, column 0"
+        assert net.s[0, 0, 1].real == 12.0, "S12 must be row 0, column 1"
+        assert net.s[0, 1, 1].real == 22.0, "S22 moved"
+    finally:
+        p.unlink(missing_ok=True)
+
+
+def test_three_port_stays_row_major():
+    """N >= 3 is row-major on disk; the reshape must not permute it."""
+    p = _REPO / "tests" / "_order_probe.s3p"
+    vals = " ".join(f"{i} 0" for i in range(1, 10))
+    p.write_text(f"# HZ S RI R 50\n1e9 {vals}\n", encoding="utf-8")
+    try:
+        net = read_touchstone(p)
+        assert net.s[0].real.tolist() == [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]
+    finally:
+        p.unlink(missing_ok=True)
+
+
+def test_fast_tokenizer_keeps_the_precise_non_numeric_message():
+    """Batch conversion must not blur which token was bad.
+
+    The happy path converts every token in one numpy call; the error path
+    re-scans to name the offender. If that fallback is ever dropped the
+    message degrades to a numpy ValueError, which tells a user nothing.
+    """
+    p = _REPO / "tests" / "_bad_token.s2p"
+    p.write_text("# HZ S RI R 50\n1e9 0.1 0 0.5 0 0.5 0 BAD 0\n", encoding="utf-8")
+    try:
+        with pytest.raises(TouchstoneError, match=r"non-numeric token 'BAD'"):
+            read_touchstone(p)
+    finally:
+        p.unlink(missing_ok=True)
