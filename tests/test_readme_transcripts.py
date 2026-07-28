@@ -38,7 +38,7 @@ def _cli(*args: str) -> subprocess.CompletedProcess:
     """Run the CLI the way the card shows it, from the repository root."""
     return subprocess.run(
         [sys.executable, "-m", "sparam_lint.cli", *args],
-        cwd=HERE, capture_output=True, text=True,
+        cwd=HERE, capture_output=True, text=True, encoding="utf-8",
         # PYTHONIOENCODING is pinned because the card shows the UTF-8 output.
         # On a narrow console the tool degrades the ohm sign to " ohm" on
         # purpose -- that path is covered by tests/test_console_encoding.py,
@@ -103,7 +103,7 @@ def test_the_json_snippet_on_the_card_runs_and_prints_what_the_card_says() -> No
     # stdin. Executing it in-process would let the snippet's own `import sys`
     # shadow any stub and would not prove the pipeline works.
     piped = subprocess.run([sys.executable, "-c", code], input=r.stdout,
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, encoding="utf-8")
     assert piped.returncode == 0, (
         "the README's --json snippet does not run:\n" + piped.stderr
     )

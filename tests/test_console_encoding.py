@@ -34,8 +34,13 @@ def _run(args: list[str], encoding: str | None) -> subprocess.CompletedProcess:
         env.pop("PYTHONIOENCODING", None)
     else:
         env["PYTHONIOENCODING"] = encoding
+    # `text=True` alone decodes with the PARENT's locale encoding, which on a
+    # Windows runner is cp1252 -- so a child writing UTF-8 came back as mojibake
+    # and the test failed for a reason that had nothing to do with the tool.
+    # Decode with exactly what the child was told to write.
     return subprocess.run([sys.executable, "-m", "sparam_lint.cli", *args],
-                          cwd=HERE, capture_output=True, text=True, env=env)
+                          cwd=HERE, capture_output=True, text=True, env=env,
+                          encoding=encoding or "utf-8")
 
 
 @pytest.mark.parametrize("encoding", NARROW)
