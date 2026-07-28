@@ -4,6 +4,13 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Supersede an in-flight run when a newer commit lands, instead of leaving a
+# queued job to be cancelled later -- a cancelled run shows red on the badge
+# and is indistinguishable from a real failure at a glance.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: test (py${{ matrix.python }} / ${{ matrix.os }})
