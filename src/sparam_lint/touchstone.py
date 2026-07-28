@@ -120,7 +120,7 @@ def read_touchstone(path: str | Path) -> Network:
     saw_option = False
     numbers: list[float] = []
 
-    with path.open("r", errors="replace") as fh:
+    with path.open("r", encoding="utf-8", errors="replace") as fh:
         for raw in fh:
             line = raw.split("!", 1)[0].strip()
             if not line:
