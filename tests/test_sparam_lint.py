@@ -8,6 +8,7 @@ cannot distinguish a working checker from one that always says PASS.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -258,8 +259,12 @@ def test_installed_entrypoint_runs():
     r = subprocess.run(
         [sys.executable, "-m", "sparam_lint.cli", "--self-test", "--json"],
         capture_output=True, text=True,
-        env={"PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src"),
-             "PATH": "/usr/bin:/bin"},
+        env={**os.environ,
+             # Inherit the OS environment and override only PYTHONPATH.
+             # A scrubbed env is not portable: on Windows, Python needs
+             # SYSTEMROOT to seed its hash randomisation and aborts
+             # without it.
+             "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src")},
     )
     assert r.returncode == 0, r.stderr
     assert json.loads(r.stdout)["battery_discriminates"] is True
