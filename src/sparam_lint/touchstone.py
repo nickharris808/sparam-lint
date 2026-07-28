@@ -136,6 +136,13 @@ def read_touchstone(path: str | Path) -> Network:
             if path.parent.exists() else []
         hint = f" -- did you mean {near[0]}?" if near else ""
         raise TouchstoneError(f"no such file: {path}{hint}")
+    if not path.is_file():
+        # A directory named model.s2p, a device node, a broken symlink target.
+        # Opening it raises IsADirectoryError or OSError, neither of which is a
+        # TouchstoneError, so the traceback escapes and kills a whole batch run
+        # instead of marking one path unreadable.
+        kind = "a directory" if path.is_dir() else "not a regular file"
+        raise TouchstoneError(f"{path} is {kind}, not a Touchstone file")
 
     m = re.search(r"\.s(\d+)p$", path.name, re.IGNORECASE)
     n_ports = int(m.group(1)) if m else 0

@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "sparam-lint"
+abstract: "Is your S-parameter model physically possible? Five laws, plus a negative control."
+type: software
+authors:
+  - name: "ChipletOS / Genesis contributors"
+version: 0.1.0
+date-released: 2026-07-28
+license: Apache-2.0
+repository-code: "https://github.com/nickharris808/sparam-lint"
+url: "https://nickharris808.github.io/physics-lint/"
+keywords:
+  - rf
+  - signal-integrity
+  - physics
+  - verification

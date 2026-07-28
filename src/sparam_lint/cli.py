@@ -45,15 +45,35 @@ def _human(results, net, use_colour: bool) -> str:
         else:
             tag = _c("FAIL", RED, use_colour)
         lines.append(f"  [{tag}] {r.name:<22} {r.message}")
-    n_fail = sum(1 for r in results if not r.passed)
+    failed = [r.name for r in results if not r.passed]
     lines.append("")
-    if n_fail:
-        lines.append(_c(f"  {n_fail} of {len(results)} laws FAILED", RED + BOLD, use_colour))
-        lines.append(_c("  This network is not physically realizable as a passive device.",
-                        DIM, use_colour))
+    if failed:
+        lines.append(_c(f"  {len(failed)} of {len(results)} laws FAILED",
+                        RED + BOLD, use_colour))
+        lines.append(_c("  " + _conclusion(failed), DIM, use_colour))
     else:
         lines.append(_c(f"  all {len(results)} laws passed", GREEN + BOLD, use_colour))
     return "\n".join(lines)
+
+
+def _conclusion(failed: list[str]) -> str:
+    """What the failures actually license us to say.
+
+    Reciprocity is the one law a real, buyable device breaks legitimately: a
+    ferrite isolator's medium is non-reciprocal, so S != S^T is it working.
+    Saying "not physically realizable" there is simply false, and it is the kind
+    of false that teaches a user to distrust the tool -- or worse, to "fix" a
+    perfectly good isolator.
+
+    The other four laws are about a passive network's energy and causality. A
+    failure there does license the strong statement.
+    """
+    hard = [n for n in failed if n != "reciprocity"]
+    if hard:
+        return "This network is not physically realizable as a passive device."
+    return ("S is not symmetric. That is a defect in a reciprocal medium and "
+            "correct behaviour in a non-reciprocal one -- a ferrite isolator or "
+            "circulator fails this by design. No other law failed.")
 
 
 def main(argv: list[str] | None = None) -> int:

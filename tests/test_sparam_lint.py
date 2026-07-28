@@ -511,3 +511,68 @@ def _cli_flags():
     import sparam_lint.cli as cli
     src = pathlib.Path(cli.__file__).read_text(encoding="utf-8")
     return set(re.findall(r'p\.add_argument\("(--[a-z-]+)"', src))
+
+
+# ------------------------------------- the conclusion must match the failures
+
+def test_a_reciprocity_only_failure_does_not_claim_unrealizability():
+    """A ferrite isolator is real, buyable hardware that fails reciprocity.
+
+    Telling its owner the network 'is not physically realizable as a passive
+    device' is false, and it is the kind of false that teaches someone to
+    distrust the tool -- or to 'fix' a working isolator.
+    """
+    from sparam_lint.cli import _conclusion
+    text = _conclusion(["reciprocity"])
+    assert "not physically realizable" not in text
+    assert "non-reciprocal" in text
+
+
+@pytest.mark.parametrize("failed", [
+    ["passivity"],
+    ["energy_conservation"],
+    ["group_delay_nonneg"],
+    ["positive_real_z0"],
+    ["reciprocity", "passivity"],
+])
+def test_any_energy_or_causality_failure_does_claim_unrealizability(failed):
+    """The strong statement is licensed by the other four laws."""
+    from sparam_lint.cli import _conclusion
+    assert "not physically realizable" in _conclusion(failed)
+
+
+def test_the_isolator_in_the_corpus_gets_the_careful_conclusion():
+    """End to end, on the case the corpus keeps precisely for this."""
+    corpus = _REPO.parent / "sparam-conformance" / "data" / "ferrite_isolator.s2p"
+    if not corpus.exists():
+        pytest.skip("conformance corpus not present")
+    buf = io.StringIO()
+    old, sys.stdout = sys.stdout, buf
+    try:
+        rc = cli_main([str(corpus), "--no-colour"])
+    finally:
+        sys.stdout = old
+    out = buf.getvalue()
+    assert rc == 1, "reciprocity still failed; the verdict is unchanged"
+    assert "not physically realizable" not in out
+    assert "ferrite isolator" in out
+
+
+@pytest.mark.parametrize("make", ["dir", "fifo"])
+def test_a_path_that_is_not_a_regular_file_is_refused(tmp_path, make):
+    """A directory named model.s2p must be a refusal, not a traceback.
+
+    Opening one raises IsADirectoryError, which is not a TouchstoneError, so
+    the exception escaped every handler and killed an entire batch run rather
+    than marking one path unreadable.
+    """
+    p = tmp_path / "trap.s2p"
+    if make == "dir":
+        p.mkdir()
+    else:
+        os_mod = pytest.importorskip("os")
+        if not hasattr(os_mod, "mkfifo"):
+            pytest.skip("no mkfifo on this platform")
+        os_mod.mkfifo(p)
+    with pytest.raises(TouchstoneError, match="not a Touchstone file"):
+        read_touchstone(p)
