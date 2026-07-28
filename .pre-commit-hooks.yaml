@@ -1,0 +1,21 @@
+- id: sparam-lint
+  name: sparam-lint (physical admissibility of S-parameter models)
+  description: >-
+    Check every staged Touchstone file against the five laws a passive linear
+    network must obey. Fails the commit on a model that cannot exist.
+  entry: sparam-lint
+  language: python
+  files: '\.s\d+p$'
+  # Touchstone files are checked one batch at a time; the CLI takes many paths.
+  pass_filenames: true
+
+- id: sparam-lint-self-test
+  name: sparam-lint negative control
+  description: >-
+    Prove the checker still discriminates before trusting a clean report. Runs
+    once per commit regardless of which files changed, because a checker that
+    has quietly stopped working looks exactly like a healthy one.
+  entry: sparam-lint --self-test
+  language: python
+  always_run: true
+  pass_filenames: false

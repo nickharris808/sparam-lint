@@ -1,6 +1,6 @@
 # sparam-lint
 
-![CI](https://github.com/nickharris808/sparam-lint/actions/workflows/ci.yml/badge.svg) ![Python](https://img.shields.io/badge/python-3.10%20%E2%80%93%203.13-blue) ![Licence](https://img.shields.io/badge/licence-Apache--2.0-green) ![Tests](https://img.shields.io/badge/tests-44%20passing-brightgreen)
+![CI](https://github.com/nickharris808/sparam-lint/actions/workflows/ci.yml/badge.svg) ![Python](https://img.shields.io/badge/python-3.10%20%E2%80%93%203.13-blue) ![Licence](https://img.shields.io/badge/licence-Apache--2.0-green) ![Tests](https://img.shields.io/badge/tests-45%20passing-brightgreen)
 
 **Is your S-parameter model physically possible?**
 
@@ -111,6 +111,25 @@ it needs nothing on a package index. Swap the first line for
 
 Running `--self-test` *before* the models is the recommended order: a clean
 report from a checker you have not verified is worth nothing.
+
+## Use as a pre-commit hook
+
+Three lines in `.pre-commit-config.yaml` and a non-physical model never reaches
+the branch:
+
+```yaml
+repos:
+  - repo: https://github.com/nickharris808/sparam-lint
+    rev: main
+    hooks:
+      - id: sparam-lint            # checks the staged .sNp files
+      - id: sparam-lint-self-test  # proves the checker still discriminates
+```
+
+The second hook has `always_run: true` on purpose. It costs about a second and
+it runs even when no model changed, because a checker that has quietly stopped
+discriminating looks exactly like a healthy one — and the commit where you would
+most want to know is the one where nothing looks wrong.
 
 ## A worked example: triaging a folder of vendor models
 

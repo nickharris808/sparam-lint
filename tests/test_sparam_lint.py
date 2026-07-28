@@ -482,3 +482,32 @@ def test_fast_tokenizer_keeps_the_precise_non_numeric_message():
             read_touchstone(p)
     finally:
         p.unlink(missing_ok=True)
+
+
+def test_pre_commit_hooks_are_valid_and_point_at_real_entrypoints():
+    """A hook file that references a flag the CLI lacks fails on someone else's machine."""
+    yaml = pytest.importorskip("yaml")
+    hooks = yaml.safe_load((_REPO / ".pre-commit-hooks.yaml").read_text(encoding="utf-8"))
+    ids = {h["id"] for h in hooks}
+    assert {"sparam-lint", "sparam-lint-self-test"} <= ids
+
+    for hook in hooks:
+        for key in ("id", "name", "description", "entry", "language"):
+            assert hook.get(key), f"{hook.get('id')} is missing {key}"
+        # Every flag in the entry must exist in the CLI.
+        for tok in hook["entry"].split()[1:]:
+            if tok.startswith("--"):
+                assert tok in _cli_flags(), f"hook uses {tok}, which the CLI does not have"
+
+    by_id = {h["id"]: h for h in hooks}
+    assert by_id["sparam-lint"]["files"] == r"\.s\d+p$"
+    assert by_id["sparam-lint-self-test"]["always_run"] is True, (
+        "the negative control must run even when no model changed"
+    )
+    assert by_id["sparam-lint-self-test"]["pass_filenames"] is False
+
+
+def _cli_flags():
+    import sparam_lint.cli as cli
+    src = pathlib.Path(cli.__file__).read_text(encoding="utf-8")
+    return set(re.findall(r'p\.add_argument\("(--[a-z-]+)"', src))
