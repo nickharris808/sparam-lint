@@ -1,6 +1,6 @@
 # sparam-lint
 
-![CI](https://github.com/nickharris808/sparam-lint/actions/workflows/ci.yml/badge.svg) ![Python](https://img.shields.io/badge/python-3.10%20%E2%80%93%203.13-blue) ![Licence](https://img.shields.io/badge/licence-Apache--2.0-green) ![Tests](https://img.shields.io/badge/tests-30%20passing-brightgreen)
+![CI](https://github.com/nickharris808/sparam-lint/actions/workflows/ci.yml/badge.svg) ![Python](https://img.shields.io/badge/python-3.10%20%E2%80%93%203.13-blue) ![Licence](https://img.shields.io/badge/licence-Apache--2.0-green) ![Tests](https://img.shields.io/badge/tests-32%20passing-brightgreen)
 
 **Is your S-parameter model physically possible?**
 
@@ -100,10 +100,14 @@ Exit codes are the contract:
 | `3` | negative control failed — the checker itself is not discriminating |
 
 ```yaml
-- run: pip install ./sparam-lint        # or `pip install sparam-lint` once published
+- run: pip install git+https://github.com/nickharris808/sparam-lint.git@main
 - run: sparam-lint --self-test          # prove the checker works
 - run: sparam-lint models/*.s2p --json  # then check the models
 ```
+
+Paste that into your own workflow as-is — it installs from this repository, so
+it needs nothing on a package index. Swap the first line for
+`pip install sparam-lint` once the name is published.
 
 Running `--self-test` *before* the models is the recommended order: a clean
 report from a checker you have not verified is worth nothing.
