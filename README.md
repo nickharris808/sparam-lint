@@ -1,6 +1,6 @@
 # sparam-lint
 
-![CI](https://github.com/nickharris808/sparam-lint/actions/workflows/ci.yml/badge.svg) ![Python](https://img.shields.io/badge/python-3.10%20%E2%80%93%203.13-blue) ![Licence](https://img.shields.io/badge/licence-Apache--2.0-green) ![Tests](https://img.shields.io/badge/tests-69%20passing-brightgreen)
+![CI](https://github.com/nickharris808/sparam-lint/actions/workflows/ci.yml/badge.svg) ![Python](https://img.shields.io/badge/python-3.10%20%E2%80%93%203.13-blue) ![Licence](https://img.shields.io/badge/licence-Apache--2.0-green) ![Tests](https://img.shields.io/badge/tests-75%20passing-brightgreen)
 
 📖 **[Documentation site](https://nickharris808.github.io/physics-lint/)** — the portfolio narrative, the concepts, a full walkthrough, and what all of this proves (and does not).
 
@@ -374,6 +374,14 @@ accurate at speed in the many-body regime, with calibrated abstention and a
 fail-closed signoff certificate, is the commercial core:
 **[ChipletOS](https://chipletos.com)**.
 
-## License
+## Licence
 
 Apache-2.0. See [LICENSE](LICENSE); copyright is declared in [NOTICE](NOTICE).
+
+## Contributing
+
+One non-negotiable rule here: every law must ship with a case that **fails** it — a check nobody has seen reject something is not a check. [`CONTRIBUTING.md`](CONTRIBUTING.md) has the detail. Each sibling repository states its own, and they differ — that is deliberate, and it is why each is trustworthy on its own terms.
+
+## Citation
+
+[`CITATION.cff`](CITATION.cff) is machine-readable; GitHub renders a “Cite this repository” button from it.
